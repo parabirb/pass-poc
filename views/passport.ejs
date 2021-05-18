@@ -1,0 +1,94 @@
+<!-- DOCTYPE HTML  -->
+<html>
+<!--
+    pass-poc by parabirb
+-->
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pass-poc: Passport</title>
+    <style>
+        body {
+            font-family: "Helvetica", "Arial", "Segoe UI", "Roboto", "Bitstream Vera", -apple-system, sans-serif;
+        }
+
+        .split {
+            text-align: center;
+        }
+
+        .inner {
+            margin: 5vw;
+        }
+    </style>
+</head>
+<body>
+<div class="split">
+    <noscript>
+        <h1>You need JavaScript to run this site.</h1>
+    </noscript>
+    <div class="inner">
+        <h1>Passport</h1>
+        <p>Use the scanner below to scan the verifier's code, then show the verifier your code.</p>
+    </div>
+    <div class="inner" id="reader-container">
+        <div id="reader"></div>
+    </div>
+</div>
+<!-- deps -->
+<script src="/jquery-3.6.0.min.js"></script>
+<script src="/html5-qrcode.min.js"></script>
+<script src="/qrcode.min.js"></script>
+<script src="/nacl-fast.min.js"></script>
+<script src="/nacl-auth.min.js"></script>
+<script src="/nacl-util.min.js"></script>
+<script>
+    function storageAvailable(type) {
+        let storage = null;
+        try {
+            storage = window[type];
+            let x = '__storage_test__';
+            storage.setItem(x, x);
+            storage.removeItem(x);
+            return true;
+        } catch (e) {
+            return e instanceof DOMException && (
+                e.code === 22 ||
+                e.code === 1014 ||
+                e.name === 'QuotaExceededError' ||
+                e.name === 'NS_ERROR_DOM_QUOTA_REACHED') &&
+                (storage && storage.length !== 0);
+        }
+    }
+</script>
+<!-- le code -->
+<script>
+    // no storage available? fail.
+    if (!storageAvailable("localStorage")) {
+        alert("Your browser is not compatible. Sorry!");
+        fail;
+    }
+
+    if (!localStorage.getItem("passport") || !localStorage.getItem("passportKey")) {
+        window.location.replace("/create-passport");
+    }
+
+    let passport = localStorage.getItem("passport");
+    let passportKey = localStorage.getItem("passportKey");
+
+    // qr scanning moment
+    function onScanSuccess(qrMessage) {
+        try {
+            let raw = nacl.util.decodeBase64(qrMessage);
+            QRCode.toDataURL(JSON.stringify({passport, key: nacl.util.encodeBase64(nacl.sign.keyPair.fromSecretKey(nacl.util.decodeBase64(passportKey)).publicKey), signed: nacl.util.encodeBase64(nacl.sign(raw, nacl.util.decodeBase64(passportKey)))}), {type: "svg"}, function (error, string) {
+                $("#reader-container").html(`<img src="${string}">`);
+            });
+        } catch (e) {
+            return;
+        }
+    }
+
+    let html5QrcodeScanner = new Html5QrcodeScanner("reader");
+    html5QrcodeScanner.render(onScanSuccess);
+</script>
+</body>
+</html>

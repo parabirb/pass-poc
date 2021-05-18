@@ -1,0 +1,90 @@
+<!-- DOCTYPE HTML  -->
+<html>
+<!--
+    pass-poc by parabirb
+-->
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pass-poc: Verify</title>
+    <style>
+        body {
+            font-family: "Helvetica", "Arial", "Segoe UI", "Roboto", "Bitstream Vera", -apple-system, sans-serif;
+        }
+
+        .split {
+            text-align: center;
+        }
+
+        .inner {
+            margin: 5vw;
+        }
+    </style>
+</head>
+<body>
+<div class="split">
+    <noscript>
+        <h1>You need JavaScript to run this site.</h1>
+    </noscript>
+    <div class="inner">
+        <h1>Verify</h1>
+        <p>Show the QR code to the person you wish to verify, and then scan their code.</p>
+    </div>
+    <div class="inner" id="reader-container">
+        <div id="reader"></div>
+    </div>
+</div>
+<!-- deps -->
+<script src="/jquery-3.6.0.min.js"></script>
+<script src="/html5-qrcode.min.js"></script>
+<script src="/qrcode.min.js"></script>
+<script src="/nacl-fast.min.js"></script>
+<script src="/nacl-auth.min.js"></script>
+<script src="/nacl-util.min.js"></script>
+<!-- le code -->
+<script>
+    let nonce = null;
+    function start() {
+        $("#reader-container").html(`<div id="reader"></div>`);
+        nonce = nacl.randomBytes(32);
+        QRCode.toDataURL(nacl.util.encodeBase64(nonce), {type: "svg"}, function (error, string) {
+            $("#reader").html(`<img src="${string}"></img><br><button onclick="proceed()">Ready to scan?</button>`);
+        });
+    }
+    start();
+
+    function proceed() {
+        $("#reader-container").html(`<div id="reader"></div>`);
+        // qr scanning moment
+        function onScanSuccess(qrMessage) {
+            try {
+                let json = JSON.parse(qrMessage);
+                let key = "<%= base64Keys.publicKey -%>";
+                if (!nacl.verify(nacl.sign.open(nacl.util.decodeBase64(json.signed), nacl.util.decodeBase64(json.key)), nonce)) {
+                    $("#reader-container").html(`Could not be verified!<br><button onclick="start()">Restart?</button>`);
+                    return;
+                }
+                let signedObject = JSON.parse(nacl.util.encodeUTF8(nacl.sign.open(nacl.util.decodeBase64(json.passport), nacl.util.decodeBase64(key))));
+                if (signedObject.publicKey !== json.key) {
+                    $("#reader-container").html(`Could not be verified!<br><button onclick="start()">Restart?</button>`);
+                    return;
+                }
+                $("#reader-container").html(`<h2>Verified!</h2><p id="name"></p><p id="dob"></p><p id="expiry"></p><p id="provider-name"></p><p id="provider-info"></p><p id="signatures"></p>`);
+                $("#name").text(`Name: ${signedObject.name}`);
+                $("#dob").text(`Date of Birth: ${signedObject.dob}`);
+                $("#expiry").text(`Expiry: ${signedObject.expiry}`);
+                $("#provider-name").text(`Provider Name: ${signedObject.provider.name}`);
+                $("#provider-info").text(`Provider Info: ${signedObject.provider.information}`);
+                $("#signatures").text(`User proved passport ownership, and passport signature is valid.`)
+            } catch (e) {
+                $("#reader-container").html(`Could not be verified!<br><button onclick="start()">Restart?</button>`);
+                return;
+            }
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner("reader");
+        html5QrcodeScanner.render(onScanSuccess);
+    }
+</script>
+</body>
+</html>

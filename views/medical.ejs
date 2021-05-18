@@ -1,0 +1,152 @@
+<!-- DOCTYPE HTML  -->
+<html>
+<!--
+    pass-poc by parabirb
+-->
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pass-poc: Medical Panel</title>
+    <style>
+        body {
+            font-family: "Helvetica", "Arial", "Segoe UI", "Roboto", "Bitstream Vera", -apple-system, sans-serif;
+        }
+
+        .split {
+            height: 100%;
+            width: 50%;
+            position: fixed;
+            z-index: 1;
+            top: 0;
+            overflow-x: scroll;
+            word-wrap: break-word;
+        }
+
+        .left {
+            left: 0;
+        }
+
+        .right {
+            right: 0;
+        }
+
+        .inner {
+            margin: 5vw;
+        }
+    </style>
+</head>
+<body>
+<div class="split left">
+    <noscript>
+        <h1>You need JavaScript to run this site.</h1>
+    </noscript>
+    <div class="inner" id="exports">
+        <h1>Medical Panel</h1>
+    </div>
+    <div class="inner" id="exports">
+        <h2>Export Information</h2>
+        <p id="key">Public key not loaded</p>
+        <p>Make sure your key is entered into the system before doing anything.</p>
+    </div>
+    <div class="inner" id="form">
+        <h2>Issue Passports</h2>
+        <input type="text" id="name" placeholder="Name"><br><br>
+        <input type="text" id="dob" placeholder="Date of Birth"><br><br>
+        <input type="text" id="expiry" placeholder="Expiry"><br><br>
+        <button onclick="submit()">Submit</button>
+        <p id="success"></p>
+    </div>
+</div>
+<div class="split right">
+    <div class="inner">
+        <h2>Passport</h2>
+        <p>QR code should appear below. <b>This QR code contains sensitive information! Do not share it!</b></p>
+        <div id="canvas"></div>
+        <button onclick="$('#canvas').html('')">Clear</button>
+    </div>
+</div>
+<!-- deps -->
+<script src="/jquery-3.6.0.min.js"></script>
+<script src="/qrcode.min.js"></script>
+<script src="/nacl-fast.min.js"></script>
+<script src="/nacl-auth.min.js"></script>
+<script src="/nacl-util.min.js"></script>
+<script>
+    function storageAvailable(type) {
+        let storage = null;
+        try {
+            storage = window[type];
+            let x = '__storage_test__';
+            storage.setItem(x, x);
+            storage.removeItem(x);
+            return true;
+        } catch (e) {
+            return e instanceof DOMException && (
+                e.code === 22 ||
+                e.code === 1014 ||
+                e.name === 'QuotaExceededError' ||
+                e.name === 'NS_ERROR_DOM_QUOTA_REACHED') &&
+                (storage && storage.length !== 0);
+        }
+    }
+</script>
+<!-- le code -->
+<script>
+    // no storage available? fail.
+    if (!storageAvailable("localStorage")) {
+        alert("Your browser is not compatible. Sorry!");
+        fail;
+    }
+    let key = {};
+    // if there's no key, generate one
+    if (!localStorage.getItem("key")) {
+        // generate and save the key
+        key = nacl.sign.keyPair();
+        localStorage.setItem("key", nacl.util.encodeBase64(key.secretKey));
+    } else {
+        // load key
+        key = nacl.sign.keyPair.fromSecretKey(nacl.util.decodeBase64(localStorage.getItem("key")));
+    }
+    // set key
+    $("#key").text(`Key: ${nacl.util.encodeBase64(key.publicKey)}`);
+    // disable ajax
+    $.ajaxSetup({async: false});
+
+    function submit() {
+        if ($("#dob").val() === "" || $("#name").val() === "" || $("#expiry").val() === "") {
+            $("#success").text(`Failed to add passport: You are missing a field!`);
+            return;
+        }
+        try {
+            let patientKey = nacl.sign.keyPair();
+            let request = $.post("/create", {
+                key: nacl.util.encodeBase64(key.publicKey),
+                signature: nacl.util.encodeBase64(nacl.sign(nacl.util.decodeUTF8(JSON.stringify({
+                    name: $("#name").val(),
+                    dob: $("#dob").val(),
+                    expiry: $("#expiry").val(),
+                    patientKey: nacl.util.encodeBase64(patientKey.publicKey)
+                })), key.secretKey))
+            });
+            if (!request.responseJSON.success) {
+                $("#success").text(`Failed to add passport: ${request.responseJSON.error}`);
+                return;
+            }
+            QRCode.toDataURL(JSON.stringify({signature: request.responseJSON.data, key: nacl.util.encodeBase64(patientKey.secretKey)}), {type: "svg"}, function (error, string) {
+                if (error) {
+                    $("#success").text(`Failed to add passport: ${error}`);
+                }
+                else {
+                    $("#success").text("Passport created!");
+                }
+                $("#canvas").html(`<img src="${string}">`);
+            });
+        }
+        catch (e) {
+            $("#success").text(`Failed to add passport: ${e}`);
+            return;
+        }
+    }
+</script>
+</body>
+</html>
